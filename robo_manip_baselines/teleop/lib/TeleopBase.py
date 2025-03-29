@@ -15,6 +15,8 @@ from robo_manip_baselines.common import (
     convertDepthImageToColorImage,
     convertDepthImageToPointCloud,
 )
+import threading
+
 
 
 class TeleopBase(metaclass=ABCMeta):
@@ -54,6 +56,21 @@ class TeleopBase(metaclass=ABCMeta):
         self.command_pos_scale = 1e-2
         self.command_rpy_scale = 5e-3
         self.gripper_scale = 5.0
+        
+        self.use_keyboard_control = False  # Toggle between spacemouse and keyboard
+        self.key_states = {
+            ord('w'): False, ord('s'): False,  # Forward/backward
+            ord('a'): False, ord('d'): False,  # Left/right
+            ord('q'): False, ord('e'): False,  # Up/down
+            ord('i'): False, ord('k'): False,  # Pitch
+            ord('j'): False, ord('l'): False,  # Yaw
+            ord('u'): False, ord('o'): False,  # Roll
+            ord('z'): False, ord('x'): False,  # Gripper
+            ord('c'): False, # Stop 
+        }
+
+            
+
 
     def run(self):
         self.reset_flag = True
@@ -67,6 +84,14 @@ class TeleopBase(metaclass=ABCMeta):
             if self.reset_flag:
                 self.reset()
                 self.reset_flag = False
+            
+            # Process keyboard input for movement controls
+            key = cv2.waitKey(1)
+            if key != -1 and key in self.key_states:
+                # Reset any keys pressed in previous iteration 
+                self.key_states = {k: False for k in self.key_states}
+                # Set the key that was pressed
+                self.key_states[key] = True        
 
             # Read spacemouse
             if self.data_manager.status == MotionStatus.TELEOP:
@@ -111,7 +136,7 @@ class TeleopBase(metaclass=ABCMeta):
                 self.draw_point_cloud(info)
 
             # Manage status
-            self.manage_status()
+            self.manage_status(key)
             if self.quit_flag:
                 break
 
@@ -204,21 +229,35 @@ class TeleopBase(metaclass=ABCMeta):
 
     def set_arm_command(self):
         if self.data_manager.status == MotionStatus.TELEOP:
-            delta_pos = self.command_pos_scale * np.array(
-                [
-                    -1.0 * self.spacemouse_state.y,
-                    self.spacemouse_state.x,
-                    self.spacemouse_state.z,
-                ]
-            )
-            delta_rpy = self.command_rpy_scale * np.array(
-                [
-                    -1.0 * self.spacemouse_state.roll,
-                    -1.0 * self.spacemouse_state.pitch,
-                    -2.0 * self.spacemouse_state.yaw,
-                ]
-            )
-            self.motion_manager.set_relative_target_se3(delta_pos, delta_rpy)
+            if self.use_keyboard_control:
+                # Create movement vectors from key states
+                x_movement = float(self.key_states[ord('d')]) - float(self.key_states[ord('a')])
+                y_movement = float(self.key_states[ord('w')]) - float(self.key_states[ord('s')])
+                z_movement = float(self.key_states[ord('q')]) - float(self.key_states[ord('e')])
+                
+                roll = float(self.key_states[ord('u')]) - float(self.key_states[ord('o')])
+                pitch = float(self.key_states[ord('i')]) - float(self.key_states[ord('k')])
+                yaw = float(self.key_states[ord('j')]) - float(self.key_states[ord('l')])
+                
+                delta_pos = self.command_pos_scale * np.array([y_movement, x_movement, z_movement])
+                delta_rpy = self.command_rpy_scale * np.array([roll, pitch, 2.0 * yaw])
+                self.motion_manager.set_relative_target_se3(delta_pos, delta_rpy)
+            else:
+                delta_pos = self.command_pos_scale * np.array(
+                    [
+                        -1.0 * self.spacemouse_state.y,
+                        self.spacemouse_state.x,
+                        self.spacemouse_state.z,
+                    ]
+                )
+                delta_rpy = self.command_rpy_scale * np.array(
+                    [
+                        -1.0 * self.spacemouse_state.roll,
+                        -1.0 * self.spacemouse_state.pitch,
+                        -2.0 * self.spacemouse_state.yaw,
+                    ]
+                )
+                self.motion_manager.set_relative_target_se3(delta_pos, delta_rpy)
 
     def set_gripper_command(self):
         if self.data_manager.status == MotionStatus.GRASP:
@@ -226,16 +265,22 @@ class TeleopBase(metaclass=ABCMeta):
                 self.env.unwrapped.gripper_action_idx
             ]
         elif self.data_manager.status == MotionStatus.TELEOP:
-            if (
-                self.spacemouse_state.buttons[0] > 0
-                and self.spacemouse_state.buttons[-1] <= 0
-            ):
-                self.motion_manager.gripper_pos += self.gripper_scale
-            elif (
-                self.spacemouse_state.buttons[-1] > 0
-                and self.spacemouse_state.buttons[0] <= 0
-            ):
-                self.motion_manager.gripper_pos -= self.gripper_scale
+            if self.use_keyboard_control:
+                if self.key_states[ord('z')]:
+                    self.motion_manager.gripper_pos += self.gripper_scale
+                if self.key_states[ord('x')]:
+                    self.motion_manager.gripper_pos -= self.gripper_scale
+            else:
+                if (
+                    self.spacemouse_state.buttons[0] > 0
+                    and self.spacemouse_state.buttons[-1] <= 0
+                ):
+                    self.motion_manager.gripper_pos += self.gripper_scale
+                elif (
+                    self.spacemouse_state.buttons[-1] > 0
+                    and self.spacemouse_state.buttons[0] <= 0
+                ):
+                    self.motion_manager.gripper_pos -= self.gripper_scale
 
     def record_data(self, obs, action, info):
         self.data_manager.append_single_data(
@@ -343,8 +388,7 @@ class TeleopBase(metaclass=ABCMeta):
         plt.draw()
         plt.pause(0.001)
 
-    def manage_status(self):
-        key = cv2.waitKey(1)
+    def manage_status(self, key):
         if self.data_manager.status == MotionStatus.INITIAL:
             if key == ord("n"):
                 self.data_manager.go_to_next_status()
@@ -362,7 +406,7 @@ class TeleopBase(metaclass=ABCMeta):
         elif self.data_manager.status == MotionStatus.GRASP:
             if key == ord("n"):
                 # Setup spacemouse
-                if (self.args.replay_log is None) and (not self._spacemouse_connected):
+                if (self.args.replay_log is None) and (not self._spacemouse_connected) and (not self.use_keyboard_control):
                     self._spacemouse_connected = True
                     pyspacemouse.open()
                 self.teleop_time_idx = 0
@@ -403,6 +447,11 @@ class TeleopBase(metaclass=ABCMeta):
                     self.quit_flag = True
         if key == 27:  # escape key
             self.quit_flag = True
+        if key == ord('t'):  # 't' to toggle control method
+            self.use_keyboard_control = not self.use_keyboard_control
+            print(f"Using {'keyboard' if self.use_keyboard_control else 'SpaceMouse'} control")
+        
+
 
     def save_data(self, filename=None):
         if filename is None:
