@@ -240,7 +240,7 @@ class TeleopBase(ABC):
             "--input_device",
             type=str,
             default="spacemouse",
-            choices=["spacemouse", "gello"],
+            choices=["spacemouse", "gello", "keyboard"],
             help="input device for teleoperation",
         )
         parser.add_argument(
