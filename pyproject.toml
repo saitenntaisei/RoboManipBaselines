@@ -14,7 +14,7 @@ authors = [
 maintainers = [
   {name = "Masaki Murooka", email = "m-murooka@aist.go.jp"},
 ]
-requires-python = ">= 3.8"
+requires-python = ">= 3.9"
 dependencies = [
   "ipdb",
   "ipython",
@@ -22,7 +22,7 @@ dependencies = [
   "pyyaml",
   "tqdm",
   "dataclasses",
-  "numpy",
+  "numpy==1.26.4",
   "h5py",
   "scipy>=1.7.0",
   "matplotlib>=3.3.4",
@@ -38,6 +38,7 @@ dependencies = [
   "torchvision",
   "torchcodec",
   "tensorboard",
+  "pynput>=1.8.1",
 ]
 dynamic = ["version"]
 
@@ -78,3 +79,7 @@ benchmarks = [
 
 [tool.setuptools.packages.find]
 include = ["robo_manip_baselines", "robo_manip_baselines.*"]
+
+[tool.uv.sources]
+diffusion-policy = { path = "third_party/diffusion_policy", editable = true }
+
