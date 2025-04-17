@@ -5,7 +5,7 @@ import numpy as np
 from gymnasium.spaces import Box, Dict
 
 from robo_manip_baselines.common import ArmConfig
-from robo_manip_baselines.teleop import GelloInputDevice, SpacemouseInputDevice
+from robo_manip_baselines.teleop import GelloInputDevice, SpacemouseInputDevice, KeyboardInputDevice
 
 from ..MujocoEnvBase import MujocoEnvBase
 
@@ -53,6 +53,8 @@ class MujocoXarm7EnvBase(MujocoEnvBase):
             InputDeviceClass = SpacemouseInputDevice
         elif input_device_name == "gello":
             InputDeviceClass = GelloInputDevice
+        elif input_device_name == "keyboard":
+            InputDeviceClass = KeyboardInputDevice
         else:
             raise ValueError(
                 f"[{self.__class__.__name__}] Invalid input device key: {input_device_name}"
